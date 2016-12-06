@@ -86,8 +86,10 @@ HexEdit::HexEdit(FileBlobModel *dataModel, QItemSelectionModel *selectionModel,
       autoBytesPerRow_(false),
       startOffset_(0),
       byteCharsCount_(0),
-      selectionStart_(0),
-      selectionSize_(0) {
+      curentPosition_(0),
+      selectionSize_(0),
+      curentArea_(WindowArea::HEX),
+      cursorPosInByte_(0) {
   setFont(util::settings::theme::font());
 
   connect(dataModel_, &FileBlobModel::newBinData, [this]() {
@@ -245,22 +247,26 @@ qint64 HexEdit::pointToBytePos(QPoint pos) {
   return bytePos;
 }
 
+HexEdit::WindowArea HexEdit::pointToWindowArea(QPoint pos) {
+  return WindowArea::OUTSIDE;
+}
+
 qint64 HexEdit::byteValue(qint64 pos) {
   return dataModel_->binData()[pos].element64();
 }
 
 qint64 HexEdit::selectionStart() {
   if (selectionSize_ < 0) {
-    return selectionStart_ + selectionSize_ + 1;
+    return curentPosition_ + selectionSize_ + 1;
   }
-  return selectionStart_;
+  return curentPosition_;
 }
 
 qint64 HexEdit::selectionEnd() {
   if (selectionSize_ < 0) {
-    return selectionStart_ + 1;
+    return curentPosition_ + 1;
   }
-  return selectionStart_ + selectionSize_;
+  return curentPosition_ + selectionSize_;
 }
 
 qint64 HexEdit::selectionSize() { return qAbs(selectionSize_); }
@@ -400,27 +406,32 @@ void HexEdit::getRangeFromIndex(QModelIndex index, qint64 *start,
 void HexEdit::paintEvent(QPaintEvent *event) {
   QPainter painter(viewport());
 
-  auto separatorOffset =
-      startMargin_ + addressWidth_ - verticalAreaSpaceWidth_ / 2 - startPosX_;
-  auto separatorLength =
-      rowsOnScreen_ * charHeight_ + horizontalAreaSpaceWidth_;
-  auto addressBarAreaRect =
-      QRect(-startPosX_, 0, separatorOffset + startPosX_, separatorLength);
-  painter.fillRect(addressBarAreaRect,
-                   viewport()->palette().color(QPalette::AlternateBase));
-  painter.drawLine(separatorOffset, 0, separatorOffset, separatorLength);
-  separatorOffset = startMargin_ + addressWidth_ + hexAreaWidth_ -
-                    verticalAreaSpaceWidth_ / 2 - startPosX_;
-  painter.drawLine(separatorOffset, 0, separatorOffset, separatorLength);
-  separatorOffset = lineWidth_ - endMargin_ / 2 - startPosX_;
-  painter.drawLine(separatorOffset, 0, separatorOffset, viewport()->height());
-  painter.drawLine(-startPosX_, separatorLength,
-                   lineWidth_ - endMargin_ / 2 - startPosX_, separatorLength);
-  separatorLength += charHeight_ + horizontalAreaSpaceWidth_;
+  bool paintCursorOnly = false;
 
-  painter.drawText(startMargin_ - startPosX_,
-                   separatorLength - horizontalAreaSpaceWidth_,
-                   statusBarText());
+  if (!paintCursorOnly) {
+      auto separatorOffset =
+          startMargin_ + addressWidth_ - verticalAreaSpaceWidth_ / 2 - startPosX_;
+      auto separatorLength =
+          rowsOnScreen_ * charHeight_ + horizontalAreaSpaceWidth_;
+      auto addressBarAreaRect =
+          QRect(-startPosX_, 0, separatorOffset + startPosX_, separatorLength);
+      painter.fillRect(addressBarAreaRect,
+                       viewport()->palette().color(QPalette::AlternateBase));
+      painter.drawLine(separatorOffset, 0, separatorOffset, separatorLength);
+      separatorOffset = startMargin_ + addressWidth_ + hexAreaWidth_ -
+                        verticalAreaSpaceWidth_ / 2 - startPosX_;
+      painter.drawLine(separatorOffset, 0, separatorOffset, separatorLength);
+      separatorOffset = lineWidth_ - endMargin_ / 2 - startPosX_;
+      painter.drawLine(separatorOffset, 0, separatorOffset, viewport()->height());
+      painter.drawLine(-startPosX_, separatorLength,
+                       lineWidth_ - endMargin_ / 2 - startPosX_, separatorLength);
+      separatorLength += charHeight_ + horizontalAreaSpaceWidth_;
+
+      painter.drawText(startMargin_ - startPosX_,
+                       separatorLength - horizontalAreaSpaceWidth_,
+                       statusBarText());
+
+  }
 
   for (auto rowNum = startRow_;
        rowNum < qMin(startRow_ + rowsOnScreen_, rowsCount_); ++rowNum) {
@@ -429,12 +440,20 @@ void HexEdit::paintEvent(QPaintEvent *event) {
     if (bytesOffset > dataBytesCount_) {
       bytesOffset = dataBytesCount_;
     }
-    painter.drawText(startMargin_ - startPosX_, yPos,
+
+    if (!paintCursorOnly) {
+      painter.drawText(startMargin_ - startPosX_, yPos,
                      addressAsText(bytesOffset));
+    }
     for (auto columnNum = 0; columnNum < bytesPerRow_; ++columnNum) {
       auto xPos = (byteCharsCount_ * charWidht_ + spaceAfterByte_) * columnNum +
                   addressWidth_ + startMargin_ - startPosX_;
       auto byteNum = rowNum * bytesPerRow_ + columnNum;
+
+      if (paintCursorOnly && byteNum != curentPosition_) {
+        continue;
+      }
+
       if (byteNum < dataBytesCount_) {
         auto bgc = byteBackroundColorFromPos(byteNum);
         if (bgc.isValid()) {
@@ -455,21 +474,27 @@ void HexEdit::paintEvent(QPaintEvent *event) {
     }
   }
 
-  // border around selected chunk
-  if (selectedChunk().isValid()) {
-    qint64 start, size;
-    getRangeFromIndex(selectedChunk(), &start, &size);
-    drawBorder(start, size);
-    drawBorder(start, size, true);
+  if (!paintCursorOnly) {
+      // border around selected chunk
+      if (selectedChunk().isValid()) {
+        qint64 start, size;
+        getRangeFromIndex(selectedChunk(), &start, &size);
+        drawBorder(start, size);
+        drawBorder(start, size, true);
+      }
+      // border around parent of selected chunk
+      if (selectedChunk().parent().isValid()) {
+        qint64 start, size;
+        getRangeFromIndex(selectedChunk().parent(), &start, &size);
+        drawBorder(start, size, false, true);
+        drawBorder(start, size, true, true);
+      }
   }
 
-  // border around parent of selected chunk
-  if (selectedChunk().parent().isValid()) {
-    qint64 start, size;
-    getRangeFromIndex(selectedChunk().parent(), &start, &size);
-    drawBorder(start, size, false, true);
-    drawBorder(start, size, true, true);
-  }
+  // cursor
+  bool inAsciiArea = curentArea_ == WindowArea::ASCII;
+  drawBorder(curentPosition_, 1, false, inAsciiArea);
+  drawBorder(curentPosition_, 1, true, !inAsciiArea);
 }
 
 void HexEdit::adjustBytesPerRowToWindowSize() {
@@ -503,7 +528,7 @@ void HexEdit::setSelection(qint64 start, qint64 size, bool setVisable) {
   }
 
   selectionSize_ = size;
-  selectionStart_ = start;
+  curentPosition_ = start;
   createChunkDialog_->setRange(selectionStart(), selectionEnd());
 
   if (setVisable) {
@@ -534,13 +559,13 @@ void HexEdit::keyPressEvent(QKeyEvent *event) {
 }
 
 void HexEdit::setSelectionEnd(qint64 bytePos) {
-  auto selectionSize = bytePos - selectionStart_;
+  auto selectionSize = bytePos - curentPosition_;
   if (selectionSize >= 0) {
     selectionSize += 1;
   } else {
     selectionSize -= 1;
   }
-  setSelection(selectionStart_, selectionSize);
+  setSelection(curentPosition_, selectionSize);
 }
 
 void HexEdit::mouseMoveEvent(QMouseEvent *event) {

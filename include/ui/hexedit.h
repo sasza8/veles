@@ -96,10 +96,21 @@ class HexEdit : public QAbstractScrollArea {
   /** Number of first pixel from left which should be displayed on the screen */
   qint64 startPosX_;
 
+  enum WindowArea {
+    ADDRESS,
+    HEX,
+    ASCII,
+    STATUS_BAR,
+    OUTSIDE,
+  };
+
   /** Number of byte where selection starts (counting from beginning of blob) */
-  qint64 selectionStart_;
+  qint64 curentPosition_;
   /** Number of bytes in selection */
   qint64 selectionSize_;
+
+  WindowArea curentArea_;
+  qint64 cursorPosInByte_;
 
   CreateChunkDialog *createChunkDialog_;
   GoToAddressDialog *goToAddressDialog_;
@@ -116,6 +127,7 @@ class HexEdit : public QAbstractScrollArea {
   void adjustBytesPerRowToWindowSize();
   QRect bytePosToRect(qint64 pos, bool ascii = false);
   qint64 pointToBytePos(QPoint pos);
+  WindowArea pointToWindowArea(QPoint pos);
   QString addressAsText(qint64 pos);
   QString hexRepresentationFromBytePos(qint64 pos);
   QString asciiRepresentationFromBytePos(qint64 pos);
