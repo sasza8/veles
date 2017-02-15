@@ -382,20 +382,37 @@ void TabBarEventFilter::tabMoved(int from, int to) {
   }
 }
 
-bool TabBarEventFilter::eventFilter(QObject *watched, QEvent *event) {
+void TabBarEventFilter::currentChanged(int index) {
   auto main_window = MainWindowWithDetachableDockWidgets
-      ::getParentMainWindow(watched);
+      ::getParentMainWindow(sender());
+  if (main_window) {
+    auto dock_widget = dynamic_cast<DockWidget*>(
+        main_window->tabToDockWidget(dynamic_cast<QTabBar*>(sender()), index));
+
+    if (dock_widget) {
+      MainWindowWithDetachableDockWidgets::setActiveDockWidget(dock_widget);
+    }
+  }
+}
+
+bool TabBarEventFilter::eventFilter(QObject *watched, QEvent *event) {
+  QTabBar* tab_bar = dynamic_cast<QTabBar*>(watched);
+  if (!tab_bar) {
+    return false;
+  }
+
+  connect(tab_bar, &QTabBar::currentChanged, this,
+      &TabBarEventFilter::currentChanged, Qt::UniqueConnection);
+
+  auto main_window = MainWindowWithDetachableDockWidgets::getParentMainWindow(
+      watched);
+
   if (main_window != nullptr && !main_window->dockWidgetsWithNoTitleBars()) {
     return false;
   }
 
-  QTabBar* tab_bar = dynamic_cast<QTabBar*>(watched);
-  if (!tab_bar) {
-    return false;
-  } else {
-    connect(tab_bar, &QTabBar::tabMoved, this,
-        &TabBarEventFilter::tabMoved, Qt::UniqueConnection);
-  }
+  connect(tab_bar, &QTabBar::tabMoved, this, &TabBarEventFilter::tabMoved,
+      Qt::UniqueConnection);
 
   if(event->type() != QEvent::MouseMove
       && event->type() != QEvent::MouseButtonPress
@@ -527,6 +544,7 @@ std::map<QString, QIcon*> View::icons_;
 View::View(QString category, QString path) {
   getOrCreateIcon(category, path);
   connect(qApp, &QGuiApplication::lastWindowClosed, &View::deleteIcons);
+  setFocusPolicy(Qt::StrongFocus);
 }
 
 View::~View() {
@@ -559,6 +577,8 @@ std::set<MainWindowWithDetachableDockWidgets*>
 MainWindowWithDetachableDockWidgets* MainWindowWithDetachableDockWidgets
     ::first_main_window_ = nullptr;
 int MainWindowWithDetachableDockWidgets::last_created_window_id_ = 0;
+QPointer<DockWidget> MainWindowWithDetachableDockWidgets
+    ::active_dock_widget_ = nullptr;
 
 MainWindowWithDetachableDockWidgets::MainWindowWithDetachableDockWidgets(
     QWidget* parent) : QMainWindow(parent),
@@ -573,6 +593,8 @@ MainWindowWithDetachableDockWidgets::MainWindowWithDetachableDockWidgets(
     first_main_window_ = this;
     setAttribute(Qt::WA_QuitOnClose, true);
     setWindowTitle("Veles");
+    connect(qApp, &QApplication::focusChanged,
+        this, &MainWindowWithDetachableDockWidgets::focusChanged);
   } else {
     setAttribute(Qt::WA_QuitOnClose, false);
     setWindowTitle(QString("Veles - window #%1").arg(last_created_window_id_));
@@ -583,6 +605,8 @@ MainWindowWithDetachableDockWidgets::MainWindowWithDetachableDockWidgets(
 #ifdef Q_OS_WIN
   setDockWidgetsWithNoTitleBars(true);
 #endif
+
+  mark_active_dock_widget_ = true;
 
   tab_bar_event_filter_ = new TabBarEventFilter(this);
   connect(this, SIGNAL(childAdded(QObject*)),
@@ -625,6 +649,7 @@ DockWidget* MainWindowWithDetachableDockWidgets::addTab(QWidget *widget,
   QApplication::processEvents();
   updateDocksAndTabs();
   bringDockWidgetToFront(dock_widget);
+  setActiveDockWidget(dock_widget);
 
   return dock_widget;
 }
@@ -676,6 +701,7 @@ void MainWindowWithDetachableDockWidgets::moveDockWidgetToWindow(
   QApplication::processEvents();
   updateDocksAndTabs();
   bringDockWidgetToFront(dock_widget);
+  setActiveDockWidget(dock_widget);
 }
 
 void MainWindowWithDetachableDockWidgets::findTwoNonTabifiedDocks(
@@ -907,6 +933,15 @@ void MainWindowWithDetachableDockWidgets::hideAllRubberBands() {
   }
 }
 
+void MainWindowWithDetachableDockWidgets::setActiveDockWidget(
+    DockWidget* dock_widget) {
+  active_dock_widget_ = dock_widget;
+
+  for (auto window : main_windows_) {
+    window->updateDocksAndTabs();
+  }
+}
+
 void MainWindowWithDetachableDockWidgets::dockLocationChanged(
     Qt::DockWidgetArea area) {
   QWidget* dock_widget = dynamic_cast<QWidget*>(sender());
@@ -993,10 +1028,81 @@ void MainWindowWithDetachableDockWidgets::updateCloseButtonsAndIconsOnTabBars() 
   }
 }
 
+void MainWindowWithDetachableDockWidgets::updateActiveDockWidget() {
+  QApplication::processEvents();
+
+  QColor bg = palette().color(QPalette::Highlight);
+  QColor fg = palette().color(QPalette::HighlightedText);
+
+  QList<QTabBar*> tab_bars = findChildren<QTabBar*>();
+  for (auto tab_bar : tab_bars) {
+    if (mark_active_dock_widget_ && dock_widgets_with_no_title_bars_
+        && active_dock_widget_ == dynamic_cast<DockWidget*>(
+        tabToDockWidget(tab_bar, tab_bar->currentIndex()))
+        && active_dock_widget_) {
+      tab_bar->setStyleSheet(
+          QString("QTabBar::tab::selected {"
+          "background : rgb(%1, %2, %3);"
+          "color : rgb(%4, %5, %6);"
+          "border-top-left-radius: 4px;"
+          "border-top-right-radius: 4px;"
+          "padding: 4px;"
+          "}")
+          .arg(bg.red()).arg(bg.green()).arg(bg.blue())
+          .arg(fg.red()).arg(fg.green()).arg(fg.blue()));
+    } else {
+      tab_bar->setStyleSheet("");
+    }
+  }
+
+  QList<DockWidget*> dock_widgets = findChildren<DockWidget*>();
+  for (auto dock_widget : dock_widgets) {
+    if (mark_active_dock_widget_
+        && active_dock_widget_ == dock_widget) {
+      dock_widget->setStyleSheet(
+          QString("QDockWidget::title {"
+          "background : rgb(%1, %2, %3);"
+          "color : rgb(%4, %5, %6);"
+          "}")
+          .arg(bg.red()).arg(bg.green()).arg(bg.blue())
+          .arg(fg.red()).arg(fg.green()).arg(fg.blue()));
+    } else {
+      dock_widget->setStyleSheet("");
+    }
+  }
+}
+
 void MainWindowWithDetachableDockWidgets::updateDocksAndTabs() {
   updateCloseButtonsAndIconsOnTabBars();
   updateDockWidgetTitleBars();
+  updateActiveDockWidget();
   layout()->invalidate();
+}
+
+void MainWindowWithDetachableDockWidgets::focusChanged(
+  QWidget* old, QWidget* now) {
+  if (now == nullptr && active_dock_widget_) {
+    active_dock_widget_->setFocus(Qt::OtherFocusReason);
+  } else {
+    DockWidget* dock_widget = DockWidget::getParentDockWidget(now);
+    if(dock_widget && dock_widget != active_dock_widget_) {
+      setActiveDockWidget(dock_widget);
+    } else {
+      QTabBar* tab_bar = dynamic_cast<QTabBar*>(now);
+      if (tab_bar) {
+        auto main_window = MainWindowWithDetachableDockWidgets
+            ::getParentMainWindow(tab_bar);
+        if (main_window) {
+          DockWidget* dock_widget = dynamic_cast<DockWidget*>(
+              main_window->tabToDockWidget(tab_bar, tab_bar->currentIndex()));
+          if (dock_widget) {
+            MainWindowWithDetachableDockWidgets
+                ::setActiveDockWidget(dock_widget);
+          }
+        }
+      }
+    }
+  }
 }
 
 bool MainWindowWithDetachableDockWidgets::event(QEvent* event) {
