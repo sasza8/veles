@@ -108,7 +108,7 @@ HexEdit::HexEdit(FileBlobModel *dataModel, QItemSelectionModel *selectionModel,
 
   if (chunkSelectionModel_) {
     connect(chunkSelectionModel_, &QItemSelectionModel::currentChanged,
-        this, &HexEdit::selectionChanged);
+        this, &HexEdit::modelSelectionChanged);
   }
 
   recalculateValues();
@@ -413,6 +413,7 @@ void HexEdit::getRangeFromIndex(QModelIndex index, qint64 *start,
 void HexEdit::paintEvent(QPaintEvent *event) {
   QPainter painter(viewport());
 
+#if 0
   auto separatorOffset =
       startMargin_ + addressWidth_ - verticalAreaSpaceWidth_ / 2 - startPosX_;
   auto separatorLength =
@@ -434,6 +435,7 @@ void HexEdit::paintEvent(QPaintEvent *event) {
   painter.drawText(startMargin_ - startPosX_,
                    separatorLength - horizontalAreaSpaceWidth_,
                    statusBarText());
+#endif
 
   for (auto rowNum = startRow_;
        rowNum < qMin(startRow_ + rowsOnScreen_, rowsCount_); ++rowNum) {
@@ -524,6 +526,7 @@ void HexEdit::setSelection(qint64 start, qint64 size, bool setVisable) {
   }
 
   viewport()->update();
+  emit selectionChanged(selectionStart(), selectionSize());
 }
 
 void HexEdit::contextMenuEvent(QContextMenuEvent *event) {
@@ -654,9 +657,10 @@ void HexEdit::dataChanged() {
   viewport()->update();
 }
 
-void HexEdit::selectionChanged() {
+void HexEdit::modelSelectionChanged() {
   scrollToCurrentChunk();
   viewport()->update();
+  emit selectionChanged(startOffset_ + selectionStart_, selectionSize_);
 }
 
 void HexEdit::scrollToCurrentChunk() {

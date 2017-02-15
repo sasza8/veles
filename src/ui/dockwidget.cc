@@ -778,18 +778,8 @@ QTabBar* MainWindowWithDetachableDockWidgets::dockWidgetToTab(
 void MainWindowWithDetachableDockWidgets::splitDockWidget2(
     QDockWidget* first, QDockWidget* second, Qt::Orientation orientation) {
   // Unfortunately we can not just call QMainWindow::splitDockWidget due to
-  // it's limitations (both documented and not).
-
-  if (!splitDockWidgetImpl(first, second, orientation)) {
-    // As Qt may sometimes refuse to subdivide dock area according
-    // to given orientation, it may be necessary to use the other
-    // orientation first and then subdivide resulting area again
-    // to obtain desired result.
-    splitDockWidgetImpl(first, second,
-        orientation == Qt::Horizontal ? Qt::Vertical : Qt::Horizontal);
-    splitDockWidgetImpl(first, second, orientation);
-  }
-
+  // its limitations (both documented and not).
+  splitDockWidget2(this, first, second, orientation);
   updateDocksAndTabs();
 }
 
@@ -800,6 +790,20 @@ void MainWindowWithDetachableDockWidgets::showRubberBand(bool show) {
   }
 
   rubber_band_->setVisible(show);
+}
+
+void MainWindowWithDetachableDockWidgets::splitDockWidget2(
+    QMainWindow* main_window, QDockWidget* first,
+    QDockWidget* second, Qt::Orientation orientation) {
+  if (!splitDockWidgetImpl(main_window, first, second, orientation)) {
+    // As Qt may sometimes refuse to subdivide dock area according
+    // to given orientation, it may be necessary to use the other
+    // orientation first and then subdivide resulting area again
+    // to obtain desired result.
+    splitDockWidgetImpl(main_window, first, second,
+        orientation == Qt::Horizontal ? Qt::Vertical : Qt::Horizontal);
+    splitDockWidgetImpl(main_window, first, second, orientation);
+  }
 }
 
 MainWindowWithDetachableDockWidgets* MainWindowWithDetachableDockWidgets
@@ -1018,25 +1022,26 @@ bool MainWindowWithDetachableDockWidgets::event(QEvent* event) {
 }
 
 bool MainWindowWithDetachableDockWidgets::splitDockWidgetImpl(
-    QDockWidget* first, QDockWidget* second, Qt::Orientation orientation) {
+    QMainWindow* main_window, QDockWidget* first,
+    QDockWidget* second, Qt::Orientation orientation) {
   // As QMainWindow::splitDockWidget doesn't handle multiple dock widgets
   // tabified together, it's necessary to detach all excessive docks,
   // split dock area and then reattach the docks.
-  auto tabified_docks = tabifiedDockWidgets(first);
+  auto tabified_docks = main_window->tabifiedDockWidgets(first);
   for (auto dock_widget : tabified_docks) {
-    removeDockWidget(dock_widget);
+    main_window->removeDockWidget(dock_widget);
   }
   tabified_docks.removeOne(second);
 
   second->show();
-  splitDockWidget(first, second, orientation);
+  main_window->splitDockWidget(first, second, orientation);
 
   for (auto dock_widget : tabified_docks) {
     dock_widget->show();
-    tabifyDockWidget(first, dock_widget);
+    main_window->tabifyDockWidget(first, dock_widget);
   }
 
-  if (tabifiedDockWidgets(first).contains(second)) {
+  if (main_window->tabifiedDockWidgets(first).contains(second)) {
     return false;
   }
 

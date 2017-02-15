@@ -34,6 +34,7 @@
 #include "ui/nodetreewidget.h"
 #include "ui/optionsdialog.h"
 #include "ui/logwidget.h"
+#include "ui/nodewidget.h"
 
 namespace veles {
 namespace ui {
@@ -297,6 +298,7 @@ void VelesMainWindow::createHexEditTab(QString fileName,
   QSharedPointer<QItemSelectionModel> selection_model(
       new QItemSelectionModel(data_model.data()));
 
+#if 0
   DockWidget* sibling1 = nullptr;
   DockWidget* sibling2 = nullptr;
   findTwoNonTabifiedDocks(sibling1, sibling2);
@@ -314,6 +316,10 @@ void VelesMainWindow::createHexEditTab(QString fileName,
   if (sibling1 == sibling2) {
     addDockWidget(Qt::RightDockWidgetArea, hex_edit_tab);
   }
+#endif
+
+  NodeWidget* node_widget = new NodeWidget(this, data_model, selection_model);
+  addTab(node_widget, data_model->path().join(" : "), nullptr);
 }
 
 void VelesMainWindow::createLogWindow() {

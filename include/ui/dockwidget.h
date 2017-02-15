@@ -167,9 +167,12 @@ class MainWindowWithDetachableDockWidgets: public QMainWindow {
   bool dockWidgetsWithNoTitleBars();
   QDockWidget* tabToDockWidget(QTabBar* tab_bar, int index);
   QTabBar* dockWidgetToTab(QDockWidget* dock_widget);
-  void splitDockWidget2(QDockWidget* first, QDockWidget* second, Qt::Orientation orientation);
+  void splitDockWidget2(QDockWidget* first, QDockWidget* second,
+      Qt::Orientation orientation);
   void showRubberBand(bool show);
 
+  static void splitDockWidget2(QMainWindow* main_window, QDockWidget* first,
+      QDockWidget* second, Qt::Orientation orientation);
   static MainWindowWithDetachableDockWidgets* getParentMainWindow(
       QObject* obj);
   static bool intersectsWithAnyMainWindow(DockWidget* dock_widget);
@@ -197,7 +200,8 @@ class MainWindowWithDetachableDockWidgets: public QMainWindow {
 
  protected:
   bool event(QEvent* event) Q_DECL_OVERRIDE;
-  bool splitDockWidgetImpl(QDockWidget* first, QDockWidget* second, Qt::Orientation orientation);
+  static bool splitDockWidgetImpl(QMainWindow* main_window,
+      QDockWidget* first, QDockWidget* second, Qt::Orientation orientation);
 
  private:
   static std::set<MainWindowWithDetachableDockWidgets*> main_windows_;

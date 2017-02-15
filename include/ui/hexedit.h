@@ -49,7 +49,7 @@ class HexEdit : public QAbstractScrollArea {
  public slots:
   void newBinData();
   void dataChanged();
-  void selectionChanged();
+  void modelSelectionChanged();
 
  protected:
   void paintEvent(QPaintEvent *event) override;
@@ -59,6 +59,9 @@ class HexEdit : public QAbstractScrollArea {
   void mouseDoubleClickEvent(QMouseEvent *event) override;
   void contextMenuEvent(QContextMenuEvent *event) override;
   void keyPressEvent(QKeyEvent *event) override;
+
+ signals:
+  void selectionChanged(qint64 start_addr, qint64 selection_size);
 
  private:
   FileBlobModel *dataModel_;
