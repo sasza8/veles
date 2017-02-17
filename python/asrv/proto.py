@@ -6,6 +6,7 @@
 import asyncio
 import msgpack
 from asrv.srv import BaseLister
+from messages import messages
 
 
 class ProtocolError(Exception):
@@ -78,18 +79,12 @@ class Proto(asyncio.Protocol):
         self.unpacker.feed(data)
         while True:
             try:
-                m = self.unpacker.unpack()
-                self.handle_msg(m)
+                msg = messages.MsgpackMsg.loads(self.unpacker)
+                self.handle_msg(msg)
             except msgpack.OutOfData:
                 return
 
     def handle_msg(self, msg):
-        if not isinstance(msg, dict):
-            self.protoerr('msg not a dict')
-            return
-        if 'type' not in msg:
-            self.protoerr('msg with no type')
-            return
         handlers = {
             'create': self.msg_create,
             'modify': self.msg_modify,
@@ -105,11 +100,8 @@ class Proto(asyncio.Protocol):
             'mthd_reg': self.msg_mthd_reg,
             'proc_reg': self.msg_proc_reg,
         }
-        if msg['type'] not in handlers:
-            conn.protoerr('unhandled msg')
-            return
         try:
-            handlers[msg['type']](msg)
+            handlers[msg.msg_type](msg)
         except ProtocolError as e:
             self.send_msg({
                 'type': 'protoerr',
@@ -147,53 +139,19 @@ class Proto(asyncio.Protocol):
         return val
 
     def msg_create(self, msg):
-        parent = self.getid(msg, 'parent')
-        pos_start = self.getnint(msg, 'pos_start')
-        pos_end = self.getnint(msg, 'pos_end')
-        tags = msg.get('tags', [])
-        attr = msg.get('attr', {})
-        data = msg.get('data', {})
-        bindata = msg.get('bindata', {})
-        if not isinstance(tags, (list, tuple)):
-            raise ProtocolError('tags is not list')
-        for tag in tags:
-            if not isinstance(tag, str):
-                raise ProtocolError('tag is not string')
-        tags = set(tags)
-        if not isinstance(attr, dict):
-            raise ProtocolError('attr is not dict')
-        for key in attr:
-            if not isinstance(key, str):
-                raise ProtocolError('attr is not string')
-        if not isinstance(data, dict):
-            raise ProtocolError('data is not dict')
-        for key in data:
-            if not isinstance(key, str):
-                raise ProtocolError('data key is not string')
-        if not isinstance(bindata, dict):
-            raise ProtocolError('bindata is not dict')
-        for key, val in bindata.items():
-            if not isinstance(key, str):
-                raise ProtocolError('bindata key is not string')
-            if not isinstance(val, bytes):
-                raise ProtocolError('bindata val is not bytes')
-        obj_id = msg.get('id')
-        if not isinstance(obj_id, bytes) or len(obj_id) != 24:
-            raise ProtocolError('obj_id is not bytes with len 24')
-        aid = self.getnint(msg, 'aid')
         self.srv.create(
-            obj_id,
-            parent,
-            tags=tags,
-            attr=attr,
-            data=data,
-            bindata=bindata,
-            pos=(pos_start,pos_end),
+            msg.id,
+            msg.parent,
+            tags=msg.tags,
+            attr=msg.attr,
+            data=msg.data,
+            bindata=msg.bindata,
+            pos=(msg.pos_start,msg.pos_end),
         )
-        if aid is not None:
+        if msg.rid is not None:
             self.send_msg({
                 'type': 'ack',
-                'aid': aid,
+                'rid': msg.rid,
             })
 
     def msg_modify(self, msg):
