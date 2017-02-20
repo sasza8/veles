@@ -103,9 +103,9 @@ class Proto(asyncio.Protocol):
         try:
             handlers[msg.msg_type](msg)
         except ProtocolError as e:
-            self.send_msg(messages.MsgProtoError({
-                'error': e.args[0],
-            }))
+            self.send_msg(messages.MsgProtoError(
+                error=e.args[0],
+            ))
 
     def connection_lost(self, ex):
         for qid, sub in self.subs.items():
@@ -126,9 +126,9 @@ class Proto(asyncio.Protocol):
             pos=(msg.pos_start,msg.pos_end),
         )
         if msg.rid is not None:
-            self.send_msg(messages.MsgAck({
-                'rid': msg.rid,
-            }))
+            self.send_msg(messages.MsgAck(
+                rid=msg.rid,
+            ))
 
     def msg_modify(self, msg):
         # XXX
@@ -142,9 +142,9 @@ class Proto(asyncio.Protocol):
         for obj in objs:
             self.srv.delete(obj)
         if msg.rid is not None:
-            self.send_msg(messages.MsgAck({
-                'rid': msg.rid,
-            }))
+            self.send_msg(messages.MsgAck(
+                rid=msg.rid,
+            ))
 
     def msg_list(self, msg):
         qid = msg.qid
@@ -162,9 +162,9 @@ class Proto(asyncio.Protocol):
             raise ProtocoloError('qid already in use')
         obj = self.srv.get(msg.id)
         if obj is None:
-            self.send_msg(messages.MsgObjGone({
-                'qid': qid,
-            }))
+            self.send_msg(messages.MsgObjGone(
+                qid=qid,
+            ))
         else:
             self.send_obj_reply(qid, obj)
             if msg.sub:
@@ -228,17 +228,17 @@ class Proto(asyncio.Protocol):
         raise NotImplementedError
 
     def send_obj_reply(self, qid, obj):
-        self.send_msg(messages.MsgGetReply({
-            'qid': qid,
-            'id': obj.id,
-            'parent': obj.parent.id if obj.parent is not None else None,
-            'pos_start': obj.pos[0],
-            'pos_end': obj.pos[1],
-            'tags': list(obj.tags),
-            'attr': obj.attr,
-            'data': list(obj.data),
-            'bindata': obj.bindata,
-        }))
+        self.send_msg(messages.MsgGetReply(
+            qid=qid,
+            id=obj.id,
+            parent=obj.parent.id if obj.parent is not None else None,
+            pos_start=obj.pos[0],
+            pos_end=obj.pos[1],
+            tags=list(obj.tags),
+            attr=obj.attr,
+            data=list(obj.data),
+            bindata=obj.bindata,
+        ))
 
     def send_list_reply(self, qid, new, gone):
         res = []
@@ -259,15 +259,15 @@ class Proto(asyncio.Protocol):
                 'id': id,
                 'gone': True,
             })
-        self.send_msg(messages.MsgListReply({
-            'objs': res,
-            'qid': qid,
-        }))
+        self.send_msg(messages.MsgListReply(
+            objs=res,
+            qid=qid,
+        ))
 
     def send_obj_gone(self, qid):
-        self.send_msg(messages.MsgObjGone({
-            'qid': qid,
-        }))
+        self.send_msg(messages.MsgObjGone(
+            qid=qid,
+        ))
 
 @asyncio.coroutine
 def unix_server(srv, path):
